@@ -1,34 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-This programs contains few function I use for the outputs and the performance metrics
+This program contains two functions to compute performance metrics.
 """
 import pandas as pd
 import numpy as np
 from sklearn.metrics import roc_auc_score
 
 '''
-Calculate the AUC, accuracy amd 
+Calculate the AUC, accuracy and RMSE
+input: fitted models from statsmodels and test set of features and target
 '''
-
 def score_metrics(Y, X, fitted_model, name):
 
+    # Compute predicted probability
     Y_hat_prob = pd.DataFrame(fitted_model.predict(X), columns=['Y_hat_prob'])
     Y = pd.DataFrame(data=Y)
     Y.columns = ['Y']
     
+    # Create df
     score = pd.concat([Y, Y_hat_prob], axis=1)
     
     score['Y_hat'] = (score['Y_hat_prob'] >= 0.5).astype('int').values
     
+    # Extract values to np.array for RMSE computation
     pred_Y = score['Y_hat'].values.reshape(len(Y))
     real_Y = Y.values.reshape(len(Y))
 
+    # Compute RMSE
     MSE  = np.sum(np.square(real_Y - pred_Y ))/len(Y)
     RMSE = np.sqrt(MSE)   
     
     score = score.drop('Y_hat_prob', axis=1)
     
+    # Gen variables for each observation
     score['Accuracy'] = score['Y'] == score['Y_hat']
     score['AUC'] = 0
     score['PT_AT'] = (score['Y_hat'] == 1) & (score['Y'] == 1)
@@ -38,10 +43,12 @@ def score_metrics(Y, X, fitted_model, name):
     
     score = score.drop(['Y', 'Y_hat'], axis=1)
     
+    # Compute aggregated statistic
     performance = score.mean()
     performance['AUC'] = roc_auc_score(Y, Y_hat_prob)
     performance['RMSE'] = RMSE
     
+    # Create other performance metrics from existing metrics
     performance = gen_metrics(performance)
     
     performance.index.name = name
