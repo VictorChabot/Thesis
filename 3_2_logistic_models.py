@@ -9,6 +9,11 @@ The two sections of this program:
     2) Generate latex ouput
     
 author: Victor Chabot
+
+compare coefficients from two regressions: 
+    https://stats.stackexchange.com/questions/93540/testing-equality-of-coefficients-from-two-different-regressions
+    
+    https://psycnet.apa.org/record/1995-27766-001
 """
  
 import os
@@ -25,8 +30,36 @@ import matplotlib.pyplot as plt
 
 import sklearn
 
+def compute_RMSE(Y, Y_hat):    
+    MSE  = np.sum(np.square(Y - Y_hat ))/len(Y)
+    RMSE = np.sqrt(MSE)
+    
+    return RMSE
+
 pd.options.display.float_format = '{:,.3f}'.format
-df = pd.read_pickle('/home/victor/gdrive/thesis_victor/codes/4_prediction/final_df.pkl')
+df = pd.read_pickle('/home/victor/gdrive/thesis_victor/codes/4_prediction/final_df_creator_id.pkl')
+
+###########################################################################
+######################## MAKE DF WITHOUT GOAL OUTLIER
+###########################################################################
+limit_goal = df['goal'].describe(percentiles=[0.05, 0.95])
+
+per_5 = limit_goal['5%']
+per_95 = limit_goal['95%']
+    
+df_windzor = df.loc[(df['goal']>per_5) & (df['goal'] < per_95), :]
+
+
+###########################################################################
+######################## MAKE DF WITHOUT nth_project VARIABLE
+###########################################################################
+df_fp = df.loc[(df['nth_project']==1), :]
+
+creator_id_df = df['creator_id'].values
+creator_id_df_windzor = df_windzor['creator_id'].values
+creator_id_df_fp = df_fp['creator_id'].values
+
+#%%
 
 os.chdir('/home/victor/gdrive/thesis_victor/codes/4_prediction')
 
@@ -75,8 +108,14 @@ main_cat_vars = [col for col in df.columns if (col[:8]=='main_cat')]
 
 # Basic Logistic regression
 # Thesis section 3.2.1
-continous_var_list_model_1 = ['intercept', 'ln_goal', 'duration', 'choc', 'nth_project', 'period', 'ratio_nth_city_country', 'lfd_new_projects']
+continous_var_list_model_1 = ['intercept', 'ln_goal', 'duration', 'nth_project', 'period', 'ratio_nth_city_country', 'lfd_new_projects']
 var_list_model_1 =  continous_var_list_model_1  + main_cat_vars + location_vars + time_vars
+
+# Basic Logistic regression without the nth-project variable
+
+continous_var_list_model_1_fp = ['intercept', 'ln_goal', 'duration', 'period', 'ratio_nth_city_country', 'lfd_new_projects']
+var_list_model_1_fp =  continous_var_list_model_1_fp  + main_cat_vars + location_vars + time_vars
+
 
 # Logistic regression with interaction of policy change and duration variable
 # Thesis section 3.2.2
@@ -90,14 +129,25 @@ var_list_model_2 = NLP_variables + var_list_model_1
 
 # Define the df with features for each model
 df_mod_1 = df[var_list_model_1]
+df_mod_1_fp = df_fp[var_list_model_1_fp]
+df_mod_1_windzor = df_windzor[var_list_model_1]
+
 df_mod_2 = df[var_list_model_2]
 df_mod_3 = df[var_list_model_3]
 
 # Define the vector of target variable
 y = df.success.astype('int')
+y_w = df_windzor.success.astype('int')
+y_fp = df_fp.success.astype('int')
 
 # Train the regressions
 model_1, results_1, train_X_1, valid_X_1, train_Y_1, valid_Y_1 = gen_logistic_model(y=y, df=df_mod_1, train_set=True)
+model_1_w, results_1_w, train_X_1_w, valid_X_1_w, train_Y_1_w, valid_Y_1_w = gen_logistic_model(y=y_w, df=df_mod_1_windzor, train_set=True)
+model_1_fp, results_1_fp, train_X_1_fp, valid_X_1_fp, train_Y_1_fp, valid_Y_1_fp = gen_logistic_model(y=y_fp, df=df_mod_1_fp, train_set=True)
+
+
+#%%
+
 model_2, results_2, train_X_2, valid_X_2, train_Y_2, valid_Y_2 = gen_logistic_model(y=y, df=df_mod_2, train_set=True)
 model_3, results_3, train_X_3, valid_X_3, train_Y_3, valid_Y_3 = gen_logistic_model(y=y, df=df_mod_3, train_set=True)
 
@@ -106,6 +156,7 @@ model_3, results_3, train_X_3, valid_X_3, train_Y_3, valid_Y_3 = gen_logistic_mo
 performance_model_1 = score_metrics(valid_Y_1, valid_X_1, results_1, name='Logistic non-NLP')
 performance_model_2 = score_metrics(valid_Y_2, valid_X_2, results_2, name='Logistic NLP')
 performance_model_3 = score_metrics(valid_Y_3, valid_X_3, results_3, name='Logistic Policy Change')
+
 
 # Merge all those metrics in one DF
 summary_results_econ = pd.DataFrame([performance_model_1, performance_model_3, performance_model_2])
@@ -118,11 +169,19 @@ summary_results_econ.to_pickle('econometric_full_results.pkl')
 margeff_1_dydx = results_1.get_margeff(method='dydx', at='median')
 margeff_2_dydx = results_2.get_margeff(method='dydx', at='median')
 
+pol_change_duration_variables = ['duration', 'choc_duration']
+margeff_3_dydx = results_3.get_margeff(method='dydx', at='median')
+
+
+
 # Select only variables of interest
 df_margeff_1 = margeff_1_dydx.summary_frame()
 marg_loc = df_margeff_1.loc[location_vars,:]        
 
 df_margeff_1_no_loc = df_margeff_1.drop(location_vars, axis=0)
+
+margeff_3_dydx = margeff_3_dydx.summary_frame()
+margeff_3_dydx  = margeff_3_dydx.loc[pol_change_duration_variables]
 
 # Replace non-significant variables by 0 coeff
 marg_loc.loc[marg_loc['Pr(>|z|)'] >= 0.05, ['dy/dx']] = 0
@@ -142,7 +201,7 @@ def calc_marg_eff(df, df_marg, var_list, filename):
     
     NLP_described = df[var_list].describe().transpose()
     
-    size_eff = NLP_described[['mean', '50%', 'std']].join(other=df_marg, how='left')
+    size_eff = NLP_described[['50%', 'std']].join(other=df_marg, how='left')
     
     size_eff['std_margeff'] = size_eff['std']*size_eff['dy/dx']
     
@@ -157,6 +216,8 @@ def calc_marg_eff(df, df_marg, var_list, filename):
 eff_mod_1 = calc_marg_eff(df=df_mod_1, df_marg=df_margeff_1 , var_list=continous_var_list_model_1, filename='1_var_model_1')
 eff_mod_1 = eff_mod_1.iloc[1:,:]
 eff_mod_2 = calc_marg_eff(df=df_mod_2, df_marg=eff_NLP , var_list=NLP_variables, filename='2_nlp_var_model_2')
+
+eff_mod_3 = calc_marg_eff(df=df_mod_3, df_marg=margeff_3_dydx , var_list=pol_change_duration_variables, filename='3_pol_change_logit')
 
 ##############################################################################
 ##########################  SECTION 2: LATEX OUTPUT OF LOGISTIC REGRESSIONS
@@ -186,13 +247,18 @@ def select_n_coeffs(results, nb_first):
 ############################### LOGISTIC MODEL 1 COEFFS AND MARGEFF
 # Print regression
 results_1_print = select_n_coeffs(results = results_1, nb_first=21)
+
+print(results_1_w.summary().as_latex())
+
+print(results_1_fp.summary().as_latex())
+ 
 # Print  MARGEFF
-print(eff_mod_1.to_latex(caption="Average Maginal Effect of on the Median Observation"))
+print(eff_mod_1.to_latex(caption="Average Maginal Effect of on the Median Regressor"))
 
 
 ############################### LOGISTIC MODEL 2 COEFFS AND MARGEFF
 results_2_print = select_n_coeffs(results = results_2, nb_first=13)
-print(eff_mod_2.to_latex(caption="Average Maginal Effect of NLP variables on the Median Observation"))
+print(eff_mod_2.to_latex(caption="Average Maginal Effect of NLP variables on the Median Regressor"))
 
 ############################### LOGISTIC MODEL 2 COEFFS AND MARGEFF
 

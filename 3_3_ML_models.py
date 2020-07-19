@@ -355,3 +355,11 @@ LGBM = change_pct(total_fin, 'NLP LDA LGBM').iloc[:3,:]*100
 LGBM.name = "Percentage increase of the GBM compared to the econometric models"
 
 print(LGBM.to_latex(caption=LGBM.name))
+
+LGBM = change_pct(total_fin, 'NLP LDA LGBM').iloc[:,:]*100
+LGBM.name = "Percentage increase of the GBM compared to the econometric models"
+
+EXTRA_TREE = change_pct(total_fin, 'NLP LDA extra trees entropy').iloc[:,:]*100
+EXTRA_TREE.name = "Percentage increase of the GBM compared to the econometric models"
+
+print(LGBM.to_latex(caption=LGBM.name))

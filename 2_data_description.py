@@ -11,7 +11,7 @@ author: Victor Chabot
 import pandas as pd
 import numpy as np
 import os
-
+from scipy import stats
 # Select display for pandas
 pd.options.display.float_format = '{:,.3f}'.format
 
@@ -22,6 +22,28 @@ df_final = pd.read_pickle('/home/victor/gdrive/thesis_victor/codes/4_prediction/
 
 df = df.loc[df_final.index, :]
 df['success'] = df_final.success
+
+df_0 = df.loc[df['choc']==0,:]
+
+df_0['nb_over_60'] = df_0['duration']>=60
+
+nb_over_60_days_before_pol_change = df_0['nb_over_60'].value_counts()
+
+frac_over_60 = nb_over_60_days_before_pol_change[1]/(df_0['nb_over_60'].shape[0])
+
+df_1 = df.loc[df['choc']==1,:]
+
+
+def compute_tfidf(tf, df, N=10):
+    
+    w = tf*np.log(N/df)
+    
+    print(str(w))
+
+compute_tfidf(tf=2, df=3, N=2)
+compute_tfidf(tf=1, df=1, N=2)
+compute_tfidf(tf=1, df=2, N=2)
+compute_tfidf(tf=1, df=1, N=2)
 
 
 """
@@ -115,7 +137,7 @@ word_hist = short_blurb.hist(density=True, bins=20)
 word_hist.set_xlabel('Nb Words per Blurb')
 word_hist.set_ylabel('Relative Frequency')
 
-word_hist.figure.savefig('1_histogram_blurb.png')
+word_hist.figure.savefig('1_histogram_blurb.png', dpi=300)
 
 df_nlp = df[['fog', 'ira', 'flesh_score','sentiment']]
 print(df_nlp.describe().to_latex())
@@ -165,7 +187,7 @@ duration_plot = described_duration.plot()
 duration_plot.axvline(x=27, label='Policy Change', ls='--')
 
 # Save plot
-duration_plot.figure.savefig('2_duration_distribution.png')
+duration_plot.figure.savefig('2_duration_distribution.png', dpi=300)
 
 ##############################################################################
 ##########################  SECTION 3: Description SERIAL CREATORS
@@ -183,6 +205,59 @@ df_creator_num = df_creator[['nb_projects', 'success', 'goal', 'frac_goal', 'mea
 
 described = df_creator_num.groupby('cuts_nb_projects').describe(percentiles=[0.5])
 
+########################COMPUTE T-TEST TO COMPARE MEAN DURATION BY NB PROJECT
+
+
+def gen_lst_of_arrays(df, binned_var, var):
+    
+    unique_binned_var = df[binned_var].unique()
+    
+    lst_arrays = list()
+    
+    for bin_value in unique_binned_var:
+        
+        # Select the appropriate value
+        array_values = df.loc[df[binned_var]==bin_value, var].values
+        
+        # Append to list the array of values
+        lst_arrays.append(array_values)
+        
+    return unique_binned_var, lst_arrays
+
+
+idx_bins_lst, lst_arrays_duration = gen_lst_of_arrays(df=df_creator_num, binned_var='cuts_nb_projects', var='mean_duration')
+
+
+# create df to store results
+
+def gen_series_p_values(idx_bins, lst_arrays, increment):
+
+    ttest_serie = pd.Series(index=idx_bins)
+    
+    ttest_serie.name = 'p-value ' + str(increment)
+    
+    increment = 1
+    idx_bins = idx_bins_lst
+    
+    for i, bn in enumerate(idx_bins[:-increment]):
+        
+        bin_1 = lst_arrays[i]
+        bin_2 = lst_arrays[i+increment]
+        
+    
+        tstat_val = stats.ttest_ind(bin_1, bin_2, equal_var = False)
+        
+        ttest_serie.iat[i] = tstat_val[1]
+        
+    return ttest_serie
+    
+serie_p_values = gen_series_p_values(idx_bins=idx_bins_lst,
+                                     lst_arrays=lst_arrays_duration,
+                                     increment=1)
+    
+df_p_values = pd.DataFrame(serie_p_values.values, index=serie_p_values.index, columns=['t-test for mean difference'])
+
+# create df to store results
 # Keep only the mean of each information
 super_creator_mean_described = described.loc[:,described.columns.get_level_values(1).isin({"mean"})]
 # Keep only the median for each information
@@ -360,7 +435,10 @@ table_2.columns = ['nb projects', 'success rate', 'mean duration']
 
 table_2['mean duration'] = table_2['mean duration'].map('{:,.1f}'.format)
 
+table_2 = table_2.join(df_p_values)
+
 table_2.name = "Average Success Rate and Duration of Campaigns in Function of Experience"
+
 
 print(table_2.to_latex())
 
@@ -380,6 +458,7 @@ print(count_main_cats.to_latex())
 print(count_sub_cats.to_latex())
 print(HHI_results.to_latex())
 d19 = df.loc[df['year_creation'] == 2019,:]
+
 
 ################################### FINAL PRINTING ########################
 

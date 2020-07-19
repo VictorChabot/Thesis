@@ -150,7 +150,14 @@ print(res)
 
 # SECOND STAGE
 res_2sls = IV2SLS(data[dep], data[exog], data[endog], data[instr]).fit()
-print(res_2sls)
+
+fitted_values_ivreg = res_2sls.fitted_values.values.reshape(1, df.shape[0])[0]
+
+ivreg_y_hat = np.where(fitted_values_ivreg>=0.5, 1 ,0)
+
+RMSE_ivreg  = compute_RMSE(df['success'].values, ivreg_y_hat)
+
+print(res_2sls.summary.as_latex())
 
 
 #################################  with simple statsmodels
@@ -245,9 +252,9 @@ df_duration['eff_duration'] = df_duration['duration']*duration_pred_coeff + df_d
 plt.plot(df_duration['duration'], df_duration['eff_duration'])
 plt.xlabel('duration in days')
 plt.ylabel('dy/dx')
-plt.axvline(x=33)
+plt.axvline(x=33, ls='--')
 
-plt.savefig('success_over_duration.png')
+plt.savefig('success_over_duration.png', dpi=300)
 
 ##############################################################################
 ##########################  SECTION 3: POISSON AND NEGATIVE BINOMIAL FOR DURATION
